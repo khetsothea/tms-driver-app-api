@@ -13,6 +13,7 @@ import com.svtrucking.logistics.repository.VehicleDriverRepository;
 import com.svtrucking.logistics.security.AuthenticatedUserUtil;
 import com.svtrucking.logistics.service.DriverService;
 import com.svtrucking.logistics.service.LiveDriverQueryService;
+import com.svtrucking.logistics.service.LocalizedMessageService;
 import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -45,8 +46,9 @@ public class DriverMobileController {
   private final DriverService driverService;
   private final VehicleDriverRepository vehicleDriverRepository;
   private final LiveDriverQueryService liveDriverQueryService;
+  private final LocalizedMessageService messages;
 
-  @GetMapping("/{id}")
+  @GetMapping({"/{id}", "/drivers/{id}"})
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<DriverDto>> getDriverById(
       @PathVariable Long id, Authentication authentication) {
@@ -56,22 +58,22 @@ public class DriverMobileController {
       DriverDto dto = DriverDto.fromEntity(driver, false, true);
       dto.setLatitude(dto.getLatitude() != null ? dto.getLatitude() : 0.0);
       dto.setLongitude(dto.getLongitude() != null ? dto.getLongitude() : 0.0);
-      return ResponseEntity.ok(ApiResponse.success("Driver found.", dto));
+      return ResponseEntity.ok(ApiResponse.success(messages.get("api.driver.found"), dto));
     } catch (DriverNotFoundException e) {
       log.warn("Driver {} not found: {}", id, e.getMessage());
       return ResponseEntity.status(HttpStatus.NOT_FOUND)
-          .body(ApiResponse.fail("Driver not found."));
+          .body(ApiResponse.fail(messages.get("api.driver.not_found")));
     } catch (ResponseStatusException e) {
       log.warn("Driver {} access rejected: {}", id, e.getReason());
       return responseStatusFailure(e);
     } catch (Exception e) {
       log.error("Failed to load driver {}: {}", id, e.getMessage(), e);
       return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-          .body(ApiResponse.fail("Failed to load driver."));
+          .body(ApiResponse.fail(messages.get("api.driver.load_failed")));
     }
   }
 
-  @GetMapping("/me/profile")
+  @GetMapping({"/me", "/me/profile"})
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<DriverDto>> getMyProfile() {
     try {
@@ -80,18 +82,19 @@ public class DriverMobileController {
       DriverDto dto = DriverDto.fromEntity(driver, false, true);
       dto.setLatitude(dto.getLatitude() != null ? dto.getLatitude() : 0.0);
       dto.setLongitude(dto.getLongitude() != null ? dto.getLongitude() : 0.0);
-      return ResponseEntity.ok(ApiResponse.success("Driver profile retrieved.", dto));
+      return ResponseEntity.ok(
+          ApiResponse.success(messages.get("api.driver.profile.retrieved"), dto));
     } catch (DriverNotFoundException e) {
       log.warn("Current driver profile not found: {}", e.getMessage());
       return ResponseEntity.status(HttpStatus.NOT_FOUND)
-          .body(ApiResponse.fail("Driver profile not found."));
+          .body(ApiResponse.fail(messages.get("api.driver.profile.not_found")));
     } catch (ResponseStatusException e) {
       log.warn("Current driver profile rejected: {}", e.getReason());
       return responseStatusFailure(e);
     } catch (Exception e) {
       log.error("Failed to load current driver profile: {}", e.getMessage(), e);
       return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-          .body(ApiResponse.fail("Failed to load driver profile."));
+          .body(ApiResponse.fail(messages.get("api.driver.profile.load_failed")));
     }
   }
 
@@ -110,18 +113,19 @@ public class DriverMobileController {
       payload.put("name", driver.getName());
       payload.put("phone", driver.getPhone());
       payload.put("profilePicture", driver.getProfilePicture());
-      return ResponseEntity.ok(ApiResponse.success("Driver ID card retrieved.", payload));
+      return ResponseEntity.ok(
+          ApiResponse.success(messages.get("api.driver.id_card.retrieved"), payload));
     } catch (DriverNotFoundException e) {
       log.warn("Current driver id-card not found: {}", e.getMessage());
       return ResponseEntity.status(HttpStatus.NOT_FOUND)
-          .body(ApiResponse.fail("Driver ID card not found."));
+          .body(ApiResponse.fail(messages.get("api.driver.id_card.not_found")));
     } catch (ResponseStatusException e) {
       log.warn("Current driver id-card rejected: {}", e.getReason());
       return responseStatusFailure(e);
     } catch (Exception e) {
       log.error("Failed to load current driver id-card: {}", e.getMessage(), e);
       return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-          .body(ApiResponse.fail("Failed to load driver ID card."));
+          .body(ApiResponse.fail(messages.get("api.driver.id_card.load_failed")));
     }
   }
 
@@ -136,21 +140,25 @@ public class DriverMobileController {
       driver.setLastName(request.lastName().trim());
       driver.setPhone(request.phoneNumber().trim());
       Driver saved = driverRepository.save(driver);
-      return ResponseEntity.ok(ApiResponse.success("Profile updated.", DriverDto.fromEntity(saved, false, true)));
+      return ResponseEntity.ok(
+          ApiResponse.success(
+              messages.get("api.driver.profile.updated"),
+              DriverDto.fromEntity(saved, false, true)));
     } catch (DriverNotFoundException e) {
       log.warn("Current driver profile update target not found: {}", e.getMessage());
       return ResponseEntity.status(HttpStatus.NOT_FOUND)
-          .body(ApiResponse.fail("Driver profile not found."));
+          .body(ApiResponse.fail(messages.get("api.driver.profile.not_found")));
     } catch (ResponseStatusException e) {
       log.warn("Current driver profile update rejected: {}", e.getReason());
       return responseStatusFailure(e);
     } catch (Exception e) {
       log.error("Failed to update current driver profile: {}", e.getMessage(), e);
-      return ResponseEntity.badRequest().body(ApiResponse.fail("Failed to update profile."));
+      return ResponseEntity.badRequest()
+          .body(ApiResponse.fail(messages.get("api.driver.profile.update_failed")));
     }
   }
 
-  @GetMapping("/my-vehicle")
+  @GetMapping({"/my-vehicle", "/me/vehicle"})
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<Map<String, Object>>> getMyVehicle() {
     try {
@@ -159,7 +167,8 @@ public class DriverMobileController {
       VehicleDriver assignment = vehicleDriverRepository.findActiveByDriverId(driverId).orElse(null);
       Vehicle vehicle = assignment != null ? assignment.getVehicle() : driver.getCurrentAssignedVehicle();
       if (vehicle == null) {
-        return ResponseEntity.ok(ApiResponse.success("No vehicle assigned", null));
+        return ResponseEntity.ok(
+            ApiResponse.success(messages.get("api.driver.vehicle.none_assigned"), null));
       }
 
       Map<String, Object> payload = new LinkedHashMap<>();
@@ -175,40 +184,47 @@ public class DriverMobileController {
       payload.put("yearMade", vehicle.getYearMade());
       payload.put("truckSize", vehicle.getTruckSize());
       payload.put("fuelConsumption", vehicle.getFuelConsumption());
-      return ResponseEntity.ok(ApiResponse.success("Assigned vehicle retrieved.", payload));
+      return ResponseEntity.ok(
+          ApiResponse.success(messages.get("api.driver.vehicle.retrieved"), payload));
     } catch (DriverNotFoundException e) {
       log.warn("Current driver vehicle lookup target not found: {}", e.getMessage());
       return ResponseEntity.status(HttpStatus.NOT_FOUND)
-          .body(ApiResponse.fail("Driver profile not found."));
+          .body(ApiResponse.fail(messages.get("api.driver.profile.not_found")));
     } catch (ResponseStatusException e) {
       log.warn("Current driver vehicle lookup rejected: {}", e.getReason());
       return responseStatusFailure(e);
     } catch (Exception e) {
       log.error("Failed to load current driver vehicle: {}", e.getMessage(), e);
-      return ResponseEntity.badRequest().body(ApiResponse.fail("Failed to load assigned vehicle."));
+      return ResponseEntity.badRequest()
+          .body(ApiResponse.fail(messages.get("api.driver.vehicle.load_failed")));
     }
   }
 
-  @PostMapping(value = "/{driverId}/upload-profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PostMapping(
+      value = {"/{driverId}/upload-profile", "/me/profile-picture"},
+      consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<String>> uploadProfilePicture(
-      @PathVariable Long driverId,
+      @PathVariable(required = false) Long driverId,
       @RequestParam("profilePicture") MultipartFile file,
       Authentication authentication) {
     try {
-      Long accessibleDriverId = resolveAccessibleDriverId(driverId, authentication);
+      Long requestedDriverId = driverId != null ? driverId : currentDriverIdOrThrow();
+      Long accessibleDriverId = resolveAccessibleDriverId(requestedDriverId, authentication);
       String fileUrl = driverService.saveProfilePicture(accessibleDriverId, file);
-      return ResponseEntity.ok(ApiResponse.success("Profile picture updated.", fileUrl));
+      return ResponseEntity.ok(
+          ApiResponse.success(messages.get("api.driver.profile_picture.updated"), fileUrl));
     } catch (DriverNotFoundException e) {
       log.warn("Profile picture upload target {} not found: {}", driverId, e.getMessage());
       return ResponseEntity.status(HttpStatus.NOT_FOUND)
-          .body(ApiResponse.fail("Driver not found."));
+          .body(ApiResponse.fail(messages.get("api.driver.not_found")));
     } catch (ResponseStatusException e) {
       log.warn("Profile picture upload rejected for driver {}: {}", driverId, e.getReason());
       return responseStatusFailure(e);
     } catch (Exception e) {
       log.error("Failed to upload profile picture for driver {}: {}", driverId, e.getMessage(), e);
-      return ResponseEntity.badRequest().body(ApiResponse.fail("Failed to upload profile picture."));
+      return ResponseEntity.badRequest()
+          .body(ApiResponse.fail(messages.get("api.driver.profile_picture.upload_failed")));
     }
   }
 
@@ -216,28 +232,44 @@ public class DriverMobileController {
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<String>> updateDeviceToken(
       @RequestBody DeviceTokenRequest request) {
+    return upsertDeviceToken(request);
+  }
+
+  @PutMapping("/me/device-token")
+  @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
+  public ResponseEntity<ApiResponse<String>> replaceDeviceToken(
+      @RequestBody DeviceTokenRequest request) {
+    return upsertDeviceToken(request);
+  }
+
+  @GetMapping({"/{driverId}/latest-location", "/me/location/latest"})
+  @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
+  public ResponseEntity<ApiResponse<LiveDriverDto>> latestForDriver(
+      @PathVariable(required = false) Long driverId, Authentication authentication) {
+    Long requestedDriverId = driverId != null ? driverId : currentDriverIdOrThrow();
+    Long accessibleDriverId = resolveAccessibleDriverId(requestedDriverId, authentication);
+    return liveDriverQueryService
+        .getLatestForDriver(accessibleDriverId)
+        .map(dto -> ResponseEntity.ok(ApiResponse.success(messages.get("api.common.ok"), dto)))
+        .orElseGet(
+            () ->
+                ResponseEntity.ok(
+                    ApiResponse.success(messages.get("api.driver.latest_location.none"), null)));
+  }
+
+  private ResponseEntity<ApiResponse<String>> upsertDeviceToken(DeviceTokenRequest request) {
     try {
       Long driverId = currentDriverIdOrThrow();
       driverService.updateDeviceToken(driverId, request.getDeviceToken());
-      return ResponseEntity.ok(ApiResponse.success("Token updated."));
+      return ResponseEntity.ok(ApiResponse.success(messages.get("api.common.token_updated")));
     } catch (ResponseStatusException e) {
       log.warn("Device token update rejected: {}", e.getReason());
       return responseStatusFailure(e);
     } catch (Exception e) {
       log.error("Failed to update device token: {}", e.getMessage(), e);
-      return ResponseEntity.badRequest().body(ApiResponse.fail("Failed to update device token."));
+      return ResponseEntity.badRequest()
+          .body(ApiResponse.fail(messages.get("api.common.request_rejected")));
     }
-  }
-
-  @GetMapping("/{driverId}/latest-location")
-  @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
-  public ResponseEntity<ApiResponse<LiveDriverDto>> latestForDriver(
-      @PathVariable Long driverId, Authentication authentication) {
-    Long accessibleDriverId = resolveAccessibleDriverId(driverId, authentication);
-    return liveDriverQueryService
-        .getLatestForDriver(accessibleDriverId)
-        .map(dto -> ResponseEntity.ok(ApiResponse.success("OK", dto)))
-        .orElseGet(() -> ResponseEntity.ok(ApiResponse.success("No data", null)));
   }
 
   private Long resolveAccessibleDriverId(Long requestedDriverId, Authentication authentication) {
@@ -248,7 +280,7 @@ public class DriverMobileController {
     Long currentDriverId = currentDriverIdOrThrow();
     if (!currentDriverId.equals(requestedDriverId)) {
       throw new ResponseStatusException(
-          HttpStatus.FORBIDDEN, "Driver access is limited to the current user");
+          HttpStatus.FORBIDDEN, messages.get("api.driver.access.current_only"));
     }
     return currentDriverId;
   }
@@ -269,7 +301,7 @@ public class DriverMobileController {
     } catch (RuntimeException e) {
       throw new ResponseStatusException(
           HttpStatus.FORBIDDEN,
-          "Authenticated user is not assigned to a driver",
+          messages.get("api.driver.access.not_assigned"),
           e);
     }
   }
@@ -277,7 +309,7 @@ public class DriverMobileController {
   private <T> ResponseEntity<ApiResponse<T>> responseStatusFailure(ResponseStatusException e) {
     String message =
         (e.getReason() == null || e.getReason().isBlank())
-            ? "Request rejected."
+            ? messages.get("api.common.request_rejected")
             : e.getReason();
     return ResponseEntity.status(e.getStatusCode()).body(ApiResponse.fail(message));
   }

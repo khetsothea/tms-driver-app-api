@@ -12,6 +12,7 @@ import com.svtrucking.logistics.repository.VehicleDriverRepository;
 import com.svtrucking.logistics.security.AuthenticatedUserUtil;
 import com.svtrucking.logistics.service.DriverService;
 import com.svtrucking.logistics.service.LiveDriverQueryService;
+import com.svtrucking.logistics.service.LocalizedMessageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +30,7 @@ class DriverMobileControllerTest {
   @Mock private DriverService driverService;
   @Mock private VehicleDriverRepository vehicleDriverRepository;
   @Mock private LiveDriverQueryService liveDriverQueryService;
+  @Mock private LocalizedMessageService messages;
 
   private DriverMobileController controller;
 
@@ -40,7 +42,12 @@ class DriverMobileControllerTest {
             driverRepository,
             driverService,
             vehicleDriverRepository,
-            liveDriverQueryService);
+            liveDriverQueryService,
+            messages);
+    when(messages.get(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.<Object>any()))
+        .thenAnswer(invocation -> invocation.getArgument(0, String.class));
+    when(messages.get(org.mockito.ArgumentMatchers.anyString()))
+        .thenAnswer(invocation -> invocation.getArgument(0, String.class));
   }
 
   @Test
@@ -57,7 +64,7 @@ class DriverMobileControllerTest {
 
     assertThat(response.getStatusCode().value()).isEqualTo(403);
     assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().getMessage()).contains("limited to the current user");
+    assertThat(response.getBody().getMessage()).contains("api.driver.access.current_only");
   }
 
   @Test
@@ -75,7 +82,7 @@ class DriverMobileControllerTest {
 
     assertThat(response.getStatusCode().value()).isEqualTo(404);
     assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().getMessage()).contains("Driver not found");
+    assertThat(response.getBody().getMessage()).contains("api.driver.not_found");
   }
 
   @Test

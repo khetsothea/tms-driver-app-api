@@ -66,6 +66,7 @@ public class DriverAppApiSecurityConfig {
                     "/actuator/health",
                     "/actuator/health/**",
                     "/actuator/info",
+                    "/actuator/prometheus",
                     "/privacy.html",
                     "/terms.html")
                 .permitAll()

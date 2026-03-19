@@ -22,7 +22,6 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -33,7 +32,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @Slf4j
-@CrossOrigin(origins = "*")
 public class DriverLocationMobileController {
 
   private final SimpMessagingTemplate messagingTemplate;

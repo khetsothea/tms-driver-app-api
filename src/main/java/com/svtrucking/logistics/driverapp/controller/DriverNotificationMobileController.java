@@ -1,10 +1,12 @@
 package com.svtrucking.logistics.driverapp.controller;
 
 import com.svtrucking.logistics.core.ApiResponse;
+import com.svtrucking.logistics.driverapp.messaging.DriverAppEventPublisher;
 import com.svtrucking.logistics.modules.notification.dto.NotificationDTO;
 import com.svtrucking.logistics.modules.notification.model.DriverNotification;
 import com.svtrucking.logistics.modules.notification.service.DriverNotificationService;
 import com.svtrucking.logistics.security.AuthenticatedUserUtil;
+import com.svtrucking.logistics.service.LocalizedMessageService;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,11 +36,13 @@ public class DriverNotificationMobileController {
 
   private final DriverNotificationService driverNotificationService;
   private final AuthenticatedUserUtil authUtil;
+  private final DriverAppEventPublisher eventPublisher;
+  private final LocalizedMessageService messages;
 
-  @GetMapping("/driver/{driverId}")
+  @GetMapping({"/driver/{driverId}", "/drivers/{driverId}", "/me"})
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<Map<String, Object>>> getDriverNotifications(
-      @PathVariable Long driverId,
+      @PathVariable(name = "driverId", required = false) Long driverId,
       @RequestParam(defaultValue = "unreadFirst") String order,
       @RequestParam(defaultValue = "false") boolean unreadOnly,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
@@ -46,7 +50,7 @@ public class DriverNotificationMobileController {
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "10") int size,
       Authentication authentication) {
-    Long resolvedDriverId = resolveAccessibleDriverId(driverId, authentication);
+    Long resolvedDriverId = resolveTargetDriverId(driverId, authentication);
     int safeSize = Math.min(Math.max(size, 1), 100);
 
     Page<DriverNotification> result;
@@ -79,18 +83,25 @@ public class DriverNotificationMobileController {
     }
     payload.put("unreadCount", driverNotificationService.countUnread(resolvedDriverId));
 
-    return ResponseEntity.ok(ApiResponse.ok("Notifications loaded", payload));
+    return ResponseEntity.ok(ApiResponse.ok(messages.get("api.driver.notifications.loaded"), payload));
   }
 
-  @PutMapping("/driver/{driverId}/{notificationId}/read")
+  @PutMapping({
+    "/driver/{driverId}/{notificationId}/read",
+    "/drivers/{driverId}/{notificationId}/read",
+    "/me/{notificationId}/read"
+  })
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<String>> markAsRead(
-      @PathVariable Long driverId,
+      @PathVariable(name = "driverId", required = false) Long driverId,
       @PathVariable Long notificationId,
       Authentication authentication) {
-    Long resolvedDriverId = resolveAccessibleDriverId(driverId, authentication);
+    Long resolvedDriverId = resolveTargetDriverId(driverId, authentication);
     driverNotificationService.markAsRead(notificationId, resolvedDriverId);
-    return ResponseEntity.ok(ApiResponse.success("Notification marked as read"));
+    eventPublisher.publishDriverNotificationAction(
+        resolvedDriverId, "notification.mark-read", notificationId);
+    return ResponseEntity.ok(
+        ApiResponse.success(messages.get("api.driver.notifications.marked_read")));
   }
 
   @PutMapping("/driver/{notificationId}/read")
@@ -103,27 +114,38 @@ public class DriverNotificationMobileController {
       resolvedDriverId = null;
     }
     driverNotificationService.markAsRead(notificationId, resolvedDriverId);
-    return ResponseEntity.ok(ApiResponse.success("Notification marked as read"));
+    eventPublisher.publishDriverNotificationAction(
+        resolvedDriverId, "notification.mark-read", notificationId);
+    return ResponseEntity.ok(
+        ApiResponse.success(messages.get("api.driver.notifications.marked_read")));
   }
 
-  @PatchMapping("/driver/{driverId}/mark-all-read")
+  @PatchMapping({"/driver/{driverId}/mark-all-read", "/drivers/{driverId}/read", "/me/read"})
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<String>> markAllAsRead(
-      @PathVariable Long driverId, Authentication authentication) {
-    Long resolvedDriverId = resolveAccessibleDriverId(driverId, authentication);
+      @PathVariable(name = "driverId", required = false) Long driverId,
+      Authentication authentication) {
+    Long resolvedDriverId = resolveTargetDriverId(driverId, authentication);
     driverNotificationService.markAllAsReadByDriver(resolvedDriverId);
-    return ResponseEntity.ok(ApiResponse.success("All notifications marked as read"));
+    return ResponseEntity.ok(
+        ApiResponse.success(messages.get("api.driver.notifications.all_marked_read")));
   }
 
-  @DeleteMapping("/driver/{driverId}/{notificationId}")
+  @DeleteMapping({
+    "/driver/{driverId}/{notificationId}",
+    "/drivers/{driverId}/{notificationId}",
+    "/me/{notificationId}"
+  })
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<String>> deleteDriverNotification(
-      @PathVariable Long driverId,
+      @PathVariable(name = "driverId", required = false) Long driverId,
       @PathVariable Long notificationId,
       Authentication authentication) {
-    Long resolvedDriverId = resolveAccessibleDriverId(driverId, authentication);
+    Long resolvedDriverId = resolveTargetDriverId(driverId, authentication);
     driverNotificationService.deleteNotification(notificationId, resolvedDriverId);
-    return ResponseEntity.ok(ApiResponse.success("Notification deleted"));
+    eventPublisher.publishDriverNotificationAction(
+        resolvedDriverId, "notification.delete", notificationId);
+    return ResponseEntity.ok(ApiResponse.success(messages.get("api.driver.notifications.deleted")));
   }
 
   @DeleteMapping("/driver/{notificationId}")
@@ -135,45 +157,67 @@ public class DriverNotificationMobileController {
       resolvedDriverId = null;
     }
     driverNotificationService.deleteNotification(notificationId, resolvedDriverId);
-    return ResponseEntity.ok(ApiResponse.success("Notification deleted"));
+    eventPublisher.publishDriverNotificationAction(
+        resolvedDriverId, "notification.delete", notificationId);
+    return ResponseEntity.ok(ApiResponse.success(messages.get("api.driver.notifications.deleted")));
   }
 
-  @DeleteMapping("/driver/{driverId}/all")
+  @DeleteMapping({"/driver/{driverId}/all", "/drivers/{driverId}", "/me"})
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<String>> deleteAllForDriver(
-      @PathVariable Long driverId, Authentication authentication) {
-    Long resolvedDriverId = resolveAccessibleDriverId(driverId, authentication);
+      @PathVariable(name = "driverId", required = false) Long driverId,
+      Authentication authentication) {
+    Long resolvedDriverId = resolveTargetDriverId(driverId, authentication);
     driverNotificationService.deleteAllNotificationsForDriver(resolvedDriverId);
-    return ResponseEntity.ok(ApiResponse.success("All notifications deleted for driver"));
+    return ResponseEntity.ok(ApiResponse.success(messages.get("api.driver.notifications.all_deleted")));
   }
 
-  @DeleteMapping("/driver/{driverId}/delete-read")
+  @DeleteMapping({"/driver/{driverId}/delete-read", "/drivers/{driverId}/read", "/me/read"})
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<String>> deleteReadForDriver(
-      @PathVariable Long driverId, Authentication authentication) {
-    Long resolvedDriverId = resolveAccessibleDriverId(driverId, authentication);
+      @PathVariable(name = "driverId", required = false) Long driverId,
+      Authentication authentication) {
+    Long resolvedDriverId = resolveTargetDriverId(driverId, authentication);
     driverNotificationService.deleteReadNotificationsForDriver(resolvedDriverId);
-    return ResponseEntity.ok(ApiResponse.success("All read notifications deleted for driver"));
+    return ResponseEntity.ok(ApiResponse.success(messages.get("api.driver.notifications.read_deleted")));
   }
 
-  @DeleteMapping("/driver/{driverId}/batch")
+  @DeleteMapping({"/driver/{driverId}/batch", "/drivers/{driverId}/bulk-delete", "/me/bulk-delete"})
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<String>> deleteBatchForDriver(
-      @PathVariable Long driverId,
+      @PathVariable(name = "driverId", required = false) Long driverId,
       @RequestBody IdsPayload payload,
       Authentication authentication) {
-    Long resolvedDriverId = resolveAccessibleDriverId(driverId, authentication);
+    Long resolvedDriverId = resolveTargetDriverId(driverId, authentication);
     driverNotificationService.deleteBatchForDriver(resolvedDriverId, payload.ids());
-    return ResponseEntity.ok(ApiResponse.success("Batch deletion completed"));
+    return ResponseEntity.ok(ApiResponse.success(messages.get("api.driver.notifications.batch_deleted")));
   }
 
-  @GetMapping("/driver/{driverId}/count")
+  @GetMapping({
+    "/driver/{driverId}/count",
+    "/drivers/{driverId}/unread-count",
+    "/me/unread-count"
+  })
   @PreAuthorize("hasAnyAuthority('ROLE_DRIVER','ROLE_ADMIN','ROLE_SUPERADMIN')")
   public ResponseEntity<ApiResponse<Long>> countDriverUnread(
-      @PathVariable Long driverId, Authentication authentication) {
-    Long resolvedDriverId = resolveAccessibleDriverId(driverId, authentication);
+      @PathVariable(name = "driverId", required = false) Long driverId,
+      Authentication authentication) {
+    Long resolvedDriverId = resolveTargetDriverId(driverId, authentication);
     long count = driverNotificationService.countUnread(resolvedDriverId);
-    return ResponseEntity.ok(ApiResponse.ok("Unread count fetched", count));
+    return ResponseEntity.ok(ApiResponse.ok(messages.get("api.common.unread_count_fetched"), count));
+  }
+
+  private Long resolveTargetDriverId(Long requestedDriverId, Authentication authentication) {
+    if (requestedDriverId != null) {
+      return resolveAccessibleDriverId(requestedDriverId, authentication);
+    }
+
+    if (isAdmin(authentication)) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, messages.get("api.driver.notifications.driver_id_required"));
+    }
+
+    return authUtil.getCurrentDriverId();
   }
 
   private Long resolveAccessibleDriverId(Long requestedDriverId, Authentication authentication) {

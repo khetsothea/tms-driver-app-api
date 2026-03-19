@@ -22,7 +22,7 @@
     </dependency>
     <dependency>
       <groupId>com.svtrucking.tms</groupId>
-      <artifactId>tms-backend</artifactId>
+      <artifactId>tms-core-api</artifactId>
       <version>${project.version}</version>
     </dependency>
   </dependencies>
